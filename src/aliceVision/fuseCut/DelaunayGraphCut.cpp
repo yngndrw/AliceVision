@@ -2183,12 +2183,6 @@ void DelaunayGraphCut::createDensePointCloud(Point3d hexah[8], const StaticVecto
 
   float minDist = hexah ? (hexah[0] - hexah[1]).size() / 1000.0f : 0.00001f;
 
-  // add points for cam centers
-  addPointsFromCameraCenters(cams, minDist);
-
-  // add 6 points to prevent singularities
-  addPointsToPreventSingularities(hexah, minDist);
-
   // add points from depth maps
   if(depthMapsFuseParams != nullptr)
     fuseFromDepthMaps(cams, hexah, *depthMapsFuseParams);
@@ -2196,6 +2190,12 @@ void DelaunayGraphCut::createDensePointCloud(Point3d hexah[8], const StaticVecto
   // add points from sfm
   if(sfmData != nullptr)
     addPointsFromSfM(hexah, cams, *sfmData);
+
+  // add points for cam centers
+  addPointsFromCameraCenters(cams, minDist);
+
+  // add 6 points to prevent singularities
+  addPointsToPreventSingularities(hexah, minDist);
 
   const int nGridHelperVolumePointsDim = mp->userParams.get<int>("LargeScale.nGridHelperVolumePointsDim", 10);
 

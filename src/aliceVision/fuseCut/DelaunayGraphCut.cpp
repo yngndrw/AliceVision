@@ -4,6 +4,9 @@
 // v. 2.0. If a copy of the MPL was not distributed with this file,
 // You can obtain one at https://mozilla.org/MPL/2.0/.
 
+// To analyse history of intersected geometries during vote
+// #define ALICEVISION_DEBUG_VOTE
+
 #include "DelaunayGraphCut.hpp"
 // #include <aliceVision/fuseCut/MaxFlow_CSR.hpp>
 #include <aliceVision/fuseCut/MaxFlow_AdjList.hpp>
@@ -394,6 +397,17 @@ void createVerticesWithVisibilities(const StaticVector<int>& cams, std::vector<P
     ALICEVISION_LOG_INFO("Visibilities created.");
 }
 
+
+void DelaunayGraphCut::IntersectionHistory::append(const GeometryIntersection& geom, const Point3d& intersectPt)
+{
+    ++steps;
+    geometries.push_back(geom);
+    intersectPts.push_back(intersectPt);
+    const Point3d toCam = cam - intersectPt;
+    vecToCam.push_back(toCam);
+    distToCam.push_back(toCam.size());
+    angleToCam.push_back(angleBetwV1andV2(dirVect, intersectPt - originPt));
+}
 
 DelaunayGraphCut::DelaunayGraphCut(mvsUtils::MultiViewParams* _mp)
 {
@@ -1656,6 +1670,9 @@ void DelaunayGraphCut::fillGraphPartPtRc(int& out_nstepsFront, int& out_nstepsBe
         const EDirection dir = EDirection::toTheCam;
         const Point3d dirVect = (mp->CArr[cam] - originPt).normalize() * (dir == EDirection::toTheCam ? 1.0 : -1.0);
 
+#ifdef ALICEVISION_DEBUG_VOTE
+        IntersectionHistory history(mp->CArr[cam], originPt, dirVect);
+#endif
         out_nstepsFront = 0;
 
         Facet lastIntersectedFacet;
@@ -1666,12 +1683,18 @@ void DelaunayGraphCut::fillGraphPartPtRc(int& out_nstepsFront, int& out_nstepsBe
             const GeometryIntersection previousGeometry = geometry;
             const Point3d lastIntersectPt = intersectPt;
 
+#ifdef ALICEVISION_DEBUG_VOTE
+            history.append(geometry, intersectPt);
+#endif
             ++out_nstepsFront;
 
             geometry = intersectNextGeom(previousGeometry, originPt, dirVect, intersectPt, 1.0e-3, lastIntersectPt);
             
             if (geometry.type == EGeometryType::None)
             {
+#ifdef ALICEVISION_DEBUG_VOTE
+                // exportBackPropagationMesh("fillGraph_ToCam_typeNone", history.geometries, originPt, mp->CArr[cam]);
+#endif
                 // throw std::runtime_error("[Error]: fillGraphPartPtRc toTheCam, cause: geometry cannot be found.");
                 ALICEVISION_LOG_TRACE("[Error]: fillGraphPartPtRc toTheCam, cause: geometry cannot be found.");
                 break;
@@ -1695,6 +1718,9 @@ void DelaunayGraphCut::fillGraphPartPtRc(int& out_nstepsFront, int& out_nstepsBe
                 const Facet mFacet = mirrorFacet(geometry.facet);
                 if (isInvalidOrInfiniteCell(mFacet.cellIndex))
                 {
+#ifdef ALICEVISION_DEBUG_VOTE
+                    // exportBackPropagationMesh("fillGraph_ToCam_invalidMirorFacet", history.geometries, originPt, mp->CArr[cam]);
+#endif
                     // throw std::runtime_error("[Error]: fillGraphPartPtRc toTheCam, cause: invalidOrInfinite miror facet.");
                     ALICEVISION_LOG_TRACE("[Error]: fillGraphPartPtRc toTheCam, cause: invalidOrInfinite miror facet.");
                     break;
@@ -1723,6 +1749,9 @@ void DelaunayGraphCut::fillGraphPartPtRc(int& out_nstepsFront, int& out_nstepsBe
         const EDirection dir = EDirection::behindThePoint;
         const Point3d dirVect = (mp->CArr[cam] - originPt).normalize() * (dir == EDirection::toTheCam ? 1 : -1);
 
+#ifdef ALICEVISION_DEBUG_VOTE
+        IntersectionHistory history(mp->CArr[cam], originPt, dirVect);
+#endif
         out_nstepsBehind = 0;
 
         bool firstIteration = true;
@@ -1734,6 +1763,9 @@ void DelaunayGraphCut::fillGraphPartPtRc(int& out_nstepsFront, int& out_nstepsBe
             const GeometryIntersection previousGeometry = geometry;
             const Point3d lastIntersectPt = intersectPt;
 
+#ifdef ALICEVISION_DEBUG_VOTE
+            history.append(geometry, intersectPt);
+#endif
             ++out_nstepsBehind;
 
             // Vote for the first facet found (only once)
@@ -1750,6 +1782,9 @@ void DelaunayGraphCut::fillGraphPartPtRc(int& out_nstepsFront, int& out_nstepsBe
                 // If we come from a facet, the next intersection must exist (even if the mirror facet is invalid, which is verified after taking mirror facet)
                 if(previousGeometry.type == EGeometryType::Facet)
                 {
+#ifdef ALICEVISION_DEBUG_VOTE
+                    // exportBackPropagationMesh("fillGraph_behindThePoint_NoneButPreviousIsFacet", history.geometries, originPt, mp->CArr[cam]);
+#endif
                     // throw std::runtime_error("[DelaunayGraphCut::fillGraphPartPtRc] first loop: Geometry cannot be found.");
                     ALICEVISION_LOG_TRACE("[Error]: fillGraphPartPtRc behindThePoint, cause: None geometry but previous is Facet.");
                 }
@@ -1867,6 +1902,9 @@ void DelaunayGraphCut::forceTedgesByGradientIJCV(bool fixesSigma, float nPixelSi
                 const EDirection dir = EDirection::toTheCam;
                 const Point3d dirVect = (mp->CArr[cam] - originPt).normalize() * (dir == EDirection::toTheCam ? 1.0 : -1.0);
 
+#ifdef ALICEVISION_DEBUG_VOTE
+                IntersectionHistory history(mp->CArr[cam], originPt, dirVect);
+#endif
                 int nstepsFront = 0;
 
                 // As long as we find a next geometry
@@ -1876,12 +1914,18 @@ void DelaunayGraphCut::forceTedgesByGradientIJCV(bool fixesSigma, float nPixelSi
                     const GeometryIntersection previousGeometry = geometry;
                     const Point3d lastIntersectPt = intersectPt;
 
+#ifdef ALICEVISION_DEBUG_VOTE
+                    history.append(geometry, intersectPt);
+#endif
                     ++nstepsFront;
 
                     geometry = intersectNextGeom(previousGeometry, originPt, dirVect, intersectPt, 1.0e-3, lastIntersectPt);
 
                     if (geometry.type == EGeometryType::None)
                     {
+#ifdef ALICEVISION_DEBUG_VOTE
+                        // exportBackPropagationMesh("forceTedgesByGradientIJCV_ToCam_typeNone", history.geometries, originPt, mp->CArr[cam]);
+#endif
                         // throw std::runtime_error("[DelaunayGraphCut::fillGraphPartPtRc] first loop: Geometry cannot be found.");
                         ALICEVISION_LOG_TRACE("[Error]: forceTedgesByGradientIJCV toTheCam, cause: geometry cannot be found.");
                         break;
@@ -1905,6 +1949,9 @@ void DelaunayGraphCut::forceTedgesByGradientIJCV(bool fixesSigma, float nPixelSi
                         const Facet mFacet = mirrorFacet(geometry.facet);
                         if (isInvalidOrInfiniteCell(mFacet.cellIndex))
                         {
+#ifdef ALICEVISION_DEBUG_VOTE
+                            // exportBackPropagationMesh("forceTedgesByGradientIJCV_ToCam_invalidMirorFacet", history.geometries, originPt, mp->CArr[cam]);
+#endif
                             // throw std::runtime_error("[DelaunayGraphCut::fillGraphPartPtRc] first loop: Geometry cannot be found.");
                             ALICEVISION_LOG_TRACE("[Error]: forceTedgesByGradientIJCV toTheCam, cause: invalidOrInfinite miror facet.");
                             break;
@@ -1926,6 +1973,9 @@ void DelaunayGraphCut::forceTedgesByGradientIJCV(bool fixesSigma, float nPixelSi
                 const EDirection dir = EDirection::behindThePoint;
                 const Point3d dirVect = (mp->CArr[cam] - originPt).normalize() * (dir == EDirection::toTheCam ? 1 : -1);
 
+#ifdef ALICEVISION_DEBUG_VOTE
+                IntersectionHistory history(mp->CArr[cam], originPt, dirVect);
+#endif
                 int nstepsBehind = 0;
 
                 Facet lastIntersectedFacet;
@@ -1936,6 +1986,9 @@ void DelaunayGraphCut::forceTedgesByGradientIJCV(bool fixesSigma, float nPixelSi
                     const GeometryIntersection previousGeometry = geometry;
                     const Point3d lastIntersectPt = intersectPt;
 
+#ifdef ALICEVISION_DEBUG_VOTE
+                    history.append(geometry, intersectPt);
+#endif
                     ++nstepsBehind;
 
                     geometry = intersectNextGeom(previousGeometry, originPt, dirVect, intersectPt, 1.0e-3, lastIntersectPt);
@@ -1946,6 +1999,9 @@ void DelaunayGraphCut::forceTedgesByGradientIJCV(bool fixesSigma, float nPixelSi
                         // If we come from a facet, the next intersection must exist (even if the mirror facet is invalid, which is verified later) 
                         if (previousGeometry.type == EGeometryType::Facet)
                         {
+#ifdef ALICEVISION_DEBUG_VOTE
+                            // exportBackPropagationMesh("forceTedgesByGradientIJCV_behindThePoint_typeNone", history.geometries, originPt, mp->CArr[cam]);
+#endif
                             // throw std::runtime_error("[Error]: forceTedgesByGradientIJCV behindThePoint, cause: geometry cannot be found.");
                             ALICEVISION_LOG_TRACE("[Error]: forceTedgesByGradientIJCV behindThePoint, cause: geometry cannot be found.");
                         }

@@ -328,7 +328,7 @@ int aliceVision_main(int argc, char* argv[])
                     float minPixSize;
                     fuseCut::Fuser fs(&mp);
 
-                    if(meshingFromDepthMaps && !estimateSpaceFromSfM)
+                    if(meshingFromDepthMaps && (!estimateSpaceFromSfM || sfmData.getLandmarks().empty()))
                       fs.divideSpaceFromDepthMaps(&hexah[0], minPixSize);
                     else
                       fs.divideSpaceFromSfM(sfmData, &hexah[0], estimateSpaceMinObservations, estimateSpaceMinObservationAngle);

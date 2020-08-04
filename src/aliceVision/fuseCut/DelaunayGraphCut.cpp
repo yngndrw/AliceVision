@@ -1591,17 +1591,23 @@ void DelaunayGraphCut::fillGraph(bool fixesSigma, float nPixelSizeBehind,
     const unsigned int seed = (unsigned int)mp->userParams.get<unsigned int>("delaunaycut.seed", 0);
     const std::vector<int> verticesRandIds = mvsUtils::createRandomArrayOfIntegers(_verticesAttr.size(), seed);
 
-    int64_t avStepsFront = 0;
-    int64_t aAvStepsFront = 0;
-    int64_t avStepsBehind = 0;
-    int64_t nAvStepsBehind = 0;
-    int avCams = 0;
-    int nAvCams = 0;
+    int64_t totalStepsFront = 0;
+    int64_t totalRayFront = 0;
+    int64_t totalStepsBehind = 0;
+    int64_t totalRayBehind = 0;
+
+    size_t totalCamHaveVisibilityOnVertex = 0;
+    size_t totalOfVertex = 0;
+
+    size_t totalIsRealNrc = 0;
+    
+    GeometriesCount totalGeometriesIntersectedFrontCount;
+    GeometriesCount totalGeometriesIntersectedBehindCount;
 
     boost::progress_display progressBar(std::min(size_t(100), verticesRandIds.size()), std::cout, "fillGraphPartPtRc\n");
     size_t progressStep = verticesRandIds.size() / 100;
     progressStep = std::max(size_t(1), progressStep);
-#pragma omp parallel for reduction(+:avStepsFront,aAvStepsFront,avStepsBehind,nAvStepsBehind,avCams,nAvCams)
+#pragma omp parallel for reduction(+:totalStepsFront,totalRayFront,totalStepsBehind,totalRayBehind,totalCamHaveVisibilityOnVertex,totalOfVertex)
     for(int i = 0; i < verticesRandIds.size(); i++)
     {
         if(i % progressStep == 0)
@@ -1615,6 +1621,7 @@ void DelaunayGraphCut::fillGraph(bool fixesSigma, float nPixelSizeBehind,
 
         if(v.isReal() && (v.nrc > 0))
         {
+            ++totalIsRealNrc;
             // "weight" is called alpha(p) in the paper
             const float weight = weightFcn((float)v.nrc, labatutWeights, v.getNbCameras()); // number of cameras
 
@@ -1623,30 +1630,40 @@ void DelaunayGraphCut::fillGraph(bool fixesSigma, float nPixelSizeBehind,
                 assert(v.cams[c] >= 0);
                 assert(v.cams[c] < mp->ncams);
 
-                int nstepsFront = 0;
-                int nstepsBehind = 0;
-                fillGraphPartPtRc(nstepsFront, nstepsBehind, vertexIndex, v.cams[c], weight, fixesSigma, nPixelSizeBehind,
+                int stepsFront = 0;
+                int stepsBehind = 0;
+                GeometriesCount geometriesIntersectedFrontCount;
+                GeometriesCount geometriesIntersectedBehindCount;
+                fillGraphPartPtRc(stepsFront, stepsBehind, geometriesIntersectedFrontCount, geometriesIntersectedBehindCount, vertexIndex, v.cams[c], weight, fixesSigma, nPixelSizeBehind,
                                   fillOut, distFcnHeight);
 
-                avStepsFront += nstepsFront;
-                aAvStepsFront += 1;
-                avStepsBehind += nstepsBehind;
-                nAvStepsBehind += 1;
+                totalStepsFront += stepsFront;
+                totalRayFront += 1;
+                totalStepsBehind += stepsBehind;
+                totalRayBehind += 1;
+
+                totalGeometriesIntersectedFrontCount += geometriesIntersectedFrontCount;
+                totalGeometriesIntersectedBehindCount += geometriesIntersectedBehindCount;
             } // for c
 
-            avCams += v.cams.size();
-            nAvCams += 1;
+            totalCamHaveVisibilityOnVertex += v.cams.size();
+            totalOfVertex += 1;
         }
     }
-    ALICEVISION_LOG_DEBUG("avStepsFront " << avStepsFront);
-    ALICEVISION_LOG_DEBUG("avStepsFront = " << mvsUtils::num2str(avStepsFront) << " // " << mvsUtils::num2str(aAvStepsFront));
-    ALICEVISION_LOG_DEBUG("avStepsBehind = " << mvsUtils::num2str(avStepsBehind) << " // " << mvsUtils::num2str(nAvStepsBehind));
-    ALICEVISION_LOG_DEBUG("avCams = " << mvsUtils::num2str(avCams) << " // " << mvsUtils::num2str(nAvCams));
 
+    ALICEVISION_LOG_DEBUG("_verticesAttr.size(): " << _verticesAttr.size() << "(" << verticesRandIds.size() << ")");
+    ALICEVISION_LOG_DEBUG("totalIsRealNrc: " << totalIsRealNrc);
+    ALICEVISION_LOG_DEBUG("totalStepsFront//totalRayFront = " << totalStepsFront << " // " << totalRayFront);
+    ALICEVISION_LOG_DEBUG("totalStepsBehind//totalRayBehind = " << totalStepsBehind << " // " << totalRayBehind);
+    ALICEVISION_LOG_DEBUG("totalCamHaveVisibilityOnVertex//totalOfVertex = " << totalCamHaveVisibilityOnVertex << " // " << totalOfVertex);
+
+    ALICEVISION_LOG_DEBUG(" - Geometries Intersected count - \n");
+    ALICEVISION_LOG_DEBUG("Front: edges " << totalGeometriesIntersectedFrontCount.edges << ", vertices: " << totalGeometriesIntersectedFrontCount.vertices << ", facets: " << totalGeometriesIntersectedFrontCount.facets);
+    ALICEVISION_LOG_DEBUG("Behind: edges " << totalGeometriesIntersectedBehindCount.edges << ", vertices: " << totalGeometriesIntersectedBehindCount.vertices << ", facets: " << totalGeometriesIntersectedBehindCount.facets);
     mvsUtils::printfElapsedTime(t1, "s-t graph weights computed : ");
 }
 
-void DelaunayGraphCut::fillGraphPartPtRc(int& out_nstepsFront, int& out_nstepsBehind, int vertexIndex, int cam,
+void DelaunayGraphCut::fillGraphPartPtRc(int& outTotalStepsFront, int& outTotalStepsBehind, GeometriesCount& outFrontCount, GeometriesCount& outBehindCount, int vertexIndex, int cam,
                                        float weight, bool fixesSigma, float nPixelSizeBehind,
                                        bool fillOut, float distFcnHeight)  // fixesSigma=true nPixelSizeBehind=2*spaceSteps allPoints=1 behind=0 fillOut=1 distFcnHeight=0
 {
@@ -1661,8 +1678,6 @@ void DelaunayGraphCut::fillGraphPartPtRc(int& out_nstepsFront, int& out_nstepsBe
     assert(cam >= 0);
     assert(cam < mp->ncams);
 
-    int nsteps = 0;
-
     if(fillOut)
     {
         // Initialisation
@@ -1674,8 +1689,7 @@ void DelaunayGraphCut::fillGraphPartPtRc(int& out_nstepsFront, int& out_nstepsBe
 #ifdef ALICEVISION_DEBUG_VOTE
         IntersectionHistory history(mp->CArr[cam], originPt, dirVect);
 #endif
-        out_nstepsFront = 0;
-
+        outTotalStepsFront = 0;
         Facet lastIntersectedFacet;
         // As long as we find a next geometry
         do
@@ -1687,7 +1701,7 @@ void DelaunayGraphCut::fillGraphPartPtRc(int& out_nstepsFront, int& out_nstepsBe
 #ifdef ALICEVISION_DEBUG_VOTE
             history.append(geometry, intersectPt);
 #endif
-            ++out_nstepsFront;
+            ++outTotalStepsFront;
 
             geometry = intersectNextGeom(previousGeometry, originPt, dirVect, intersectPt, 1.0e-3, lastIntersectPt);
             
@@ -1703,7 +1717,7 @@ void DelaunayGraphCut::fillGraphPartPtRc(int& out_nstepsFront, int& out_nstepsBe
 
             if(geometry.type == EGeometryType::Facet)
             {
-                lastIntersectedFacet = geometry.facet;
+                ++outFrontCount.facets;
                 // Vote for the cell between the previous vertex/edge and the intersected facet
                 // Because if there is an edge or a vertex, no vote has been made, we have to vote here for the right facet once we find it
                 if(previousGeometry.type != EGeometryType::Facet)
@@ -1732,6 +1746,14 @@ void DelaunayGraphCut::fillGraphPartPtRc(int& out_nstepsFront, int& out_nstepsBe
 #pragma OMP_ATOMIC_UPDATE
                 _cellsAttr[geometry.facet.cellIndex].emptinessScore += weight;
             }
+            else if (geometry.type == EGeometryType::Vertex)
+            {
+                ++outFrontCount.vertices;
+            }
+            else if (geometry.type == EGeometryType::Edge)
+            {
+                ++outFrontCount.edges;
+            }
 
         // Break only when we reach our camera vertex
         } while(!(geometry.type == EGeometryType::Vertex && (mp->CArr[cam] - intersectPt).size() < 1.0e-3));
@@ -1753,7 +1775,7 @@ void DelaunayGraphCut::fillGraphPartPtRc(int& out_nstepsFront, int& out_nstepsBe
 #ifdef ALICEVISION_DEBUG_VOTE
         IntersectionHistory history(mp->CArr[cam], originPt, dirVect);
 #endif
-        out_nstepsBehind = 0;
+        outTotalStepsBehind = 0;
 
         bool firstIteration = true;
         Facet lastIntersectedFacet;
@@ -1767,10 +1789,10 @@ void DelaunayGraphCut::fillGraphPartPtRc(int& out_nstepsFront, int& out_nstepsBe
 #ifdef ALICEVISION_DEBUG_VOTE
             history.append(geometry, intersectPt);
 #endif
-            ++out_nstepsBehind;
+            ++outTotalStepsBehind;
 
             // Vote for the first facet found (only once)
-            if(firstIteration && geometry.type == EGeometryType::Facet)
+            if (firstIteration && geometry.type == EGeometryType::Facet)
             {
 #pragma OMP_ATOMIC_UPDATE
                 _cellsAttr[geometry.facet.cellIndex].on += weight;
@@ -1795,6 +1817,7 @@ void DelaunayGraphCut::fillGraphPartPtRc(int& out_nstepsFront, int& out_nstepsBe
 
             if(geometry.type == EGeometryType::Facet)
             {
+                ++outBehindCount.facets;
                 lastIntersectedFacet = geometry.facet;
 
                 // Vote for the cell between the previous vertex/edge and the intersected facet
@@ -1821,6 +1844,14 @@ void DelaunayGraphCut::fillGraphPartPtRc(int& out_nstepsFront, int& out_nstepsBe
                 // Vote for the new cell after taking the mirror facet
 #pragma OMP_ATOMIC_UPDATE
                 _cellsAttr[geometry.facet.cellIndex].fullnessScore += weight;
+            }
+            else if (geometry.type == EGeometryType::Vertex)
+            {
+                ++outBehindCount.vertices;
+            }
+            else if (geometry.type == EGeometryType::Edge)
+            {
+                ++outBehindCount.edges;
             }
 
         // While we are within the surface margin
@@ -1859,7 +1890,6 @@ void DelaunayGraphCut::forceTedgesByGradientIJCV(bool fixesSigma, float nPixelSi
     float nsigmaBackSilentPart = (float)mp->userParams.get<double>("delaunaycut.nsigmaBackSilentPart", 2.0f);
     ALICEVISION_LOG_DEBUG("nsigmaBackSilentPart: " << nsigmaBackSilentPart);
 
-
     for(GC_cellInfo& c: _cellsAttr)
     {
         c.on = 0.0f;
@@ -1871,12 +1901,20 @@ void DelaunayGraphCut::forceTedgesByGradientIJCV(bool fixesSigma, float nPixelSi
     const unsigned int seed = (unsigned int)mp->userParams.get<unsigned int>("delaunaycut.seed", 0);
     const std::vector<int> verticesRandIds = mvsUtils::createRandomArrayOfIntegers(_verticesAttr.size(), seed);
 
-    int64_t avStepsFront = 0;
-    int64_t aAvStepsFront = 0;
-    int64_t avStepsBehind = 0;
-    int64_t nAvStepsBehind = 0;
+    size_t totalStepsFront = 0;
+    size_t totalRayFront = 0;
+    size_t totalStepsBehind = 0;
+    size_t totalRayBehind = 0;
 
-#pragma omp parallel for reduction(+:avStepsFront,aAvStepsFront,avStepsBehind,nAvStepsBehind)
+    size_t totalCamHaveVisibilityOnVertex = 0;
+    size_t totalOfVertex = 0;
+
+    size_t totalVertexIsVirtual = 0;
+
+    GeometriesCount totalGeometriesIntersectedFrontCount;
+    GeometriesCount totalGeometriesIntersectedBehindCount;
+
+#pragma omp parallel for reduction(+:totalStepsFront,totalRayFront,totalStepsBehind,totalRayBehind)
     for(int i = 0; i < verticesRandIds.size(); ++i)
     {
         const int vertexIndex = verticesRandIds[i];
@@ -1884,6 +1922,7 @@ void DelaunayGraphCut::forceTedgesByGradientIJCV(bool fixesSigma, float nPixelSi
         if(v.isVirtual())
             continue;
 
+        ++totalVertexIsVirtual;
         const Point3d& originPt = _verticesCoords[vertexIndex];
         // For each camera that has visibility over the vertex v (vertexIndex)
         for(const int cam : v.cams)
@@ -1906,8 +1945,6 @@ void DelaunayGraphCut::forceTedgesByGradientIJCV(bool fixesSigma, float nPixelSi
 #ifdef ALICEVISION_DEBUG_VOTE
                 IntersectionHistory history(mp->CArr[cam], originPt, dirVect);
 #endif
-                int nstepsFront = 0;
-
                 // As long as we find a next geometry
                 do
                 {
@@ -1918,7 +1955,7 @@ void DelaunayGraphCut::forceTedgesByGradientIJCV(bool fixesSigma, float nPixelSi
 #ifdef ALICEVISION_DEBUG_VOTE
                     history.append(geometry, intersectPt);
 #endif
-                    ++nstepsFront;
+                    ++totalStepsFront;
 
                     geometry = intersectNextGeom(previousGeometry, originPt, dirVect, intersectPt, 1.0e-3, lastIntersectPt);
 
@@ -1934,6 +1971,7 @@ void DelaunayGraphCut::forceTedgesByGradientIJCV(bool fixesSigma, float nPixelSi
 
                     if(geometry.type == EGeometryType::Facet)
                     {
+                        ++totalGeometriesIntersectedFrontCount.facets;
                         const GC_cellInfo& c = _cellsAttr[geometry.facet.cellIndex];
                         if((intersectPt - originPt).size() > nsigmaFrontSilentPart * maxDist) // (p-originPt).size() > 2 * sigma
                         {
@@ -1959,13 +1997,20 @@ void DelaunayGraphCut::forceTedgesByGradientIJCV(bool fixesSigma, float nPixelSi
                         }
                         geometry.facet = mFacet;
                     }
+                    else if (geometry.type == EGeometryType::Vertex)
+                    {
+                        ++totalGeometriesIntersectedFrontCount.vertices;
+                    }
+                    else if (geometry.type == EGeometryType::Edge)
+                    {
+                        ++totalGeometriesIntersectedFrontCount.edges;
+                    }
 
                     // Break only when we reach our camera vertex or our distance condition is unsatisfied
                 } while(!(geometry.type == EGeometryType::Vertex && (mp->CArr[cam] - intersectPt).size() < 1.0e-3) 
                 && (intersectPt - originPt).size() <= (nsigmaJumpPart + nsigmaFrontSilentPart) * maxDist);
                 
-                avStepsFront += nstepsFront;
-                aAvStepsFront += 1;
+                ++totalRayFront;
             }
             {
                 // Initialisation
@@ -1977,7 +2022,6 @@ void DelaunayGraphCut::forceTedgesByGradientIJCV(bool fixesSigma, float nPixelSi
 #ifdef ALICEVISION_DEBUG_VOTE
                 IntersectionHistory history(mp->CArr[cam], originPt, dirVect);
 #endif
-                int nstepsBehind = 0;
 
                 Facet lastIntersectedFacet;
                 // As long as we find a next geometry
@@ -1990,7 +2034,7 @@ void DelaunayGraphCut::forceTedgesByGradientIJCV(bool fixesSigma, float nPixelSi
 #ifdef ALICEVISION_DEBUG_VOTE
                     history.append(geometry, intersectPt);
 #endif
-                    ++nstepsBehind;
+                    ++totalStepsBehind;
 
                     geometry = intersectNextGeom(previousGeometry, originPt, dirVect, intersectPt, 1.0e-3, lastIntersectPt);
 
@@ -2012,6 +2056,8 @@ void DelaunayGraphCut::forceTedgesByGradientIJCV(bool fixesSigma, float nPixelSi
 
                     if(geometry.type == EGeometryType::Facet)
                     {
+                        ++totalGeometriesIntersectedFrontCount.facets;
+
                         const GC_cellInfo& c = _cellsAttr[geometry.facet.cellIndex];
                         minSilent = std::min(minSilent, c.emptinessScore);
                         maxSilent = std::max(maxSilent, c.emptinessScore);
@@ -2024,6 +2070,14 @@ void DelaunayGraphCut::forceTedgesByGradientIJCV(bool fixesSigma, float nPixelSi
                             break;
                         }
                         geometry.facet = mFacet;
+                    }
+                    else if (geometry.type == EGeometryType::Vertex)
+                    {
+                        ++totalGeometriesIntersectedFrontCount.vertices;
+                    }
+                    else if (geometry.type == EGeometryType::Edge)
+                    {
+                        ++totalGeometriesIntersectedFrontCount.edges;
                     }
 
                 } while((intersectPt - originPt).size() <= nsigmaBackSilentPart * maxDist);
@@ -2054,11 +2108,11 @@ void DelaunayGraphCut::forceTedgesByGradientIJCV(bool fixesSigma, float nPixelSi
                         _cellsAttr[lastIntersectedFacet.cellIndex].on += (maxJump - midSilent);
                     }
                 }
-
-                avStepsBehind += nstepsBehind;
-                nAvStepsBehind += 1;
+                ++totalRayBehind;
             }
         }
+        totalCamHaveVisibilityOnVertex += v.cams.size();
+        totalOfVertex += 1;
     }
 
     for(GC_cellInfo& c: _cellsAttr)
@@ -2070,10 +2124,12 @@ void DelaunayGraphCut::forceTedgesByGradientIJCV(bool fixesSigma, float nPixelSi
         // c.cellTWeight = std::max(c.cellTWeight,fit->info().on);
     }
 
-    {
-        ALICEVISION_LOG_DEBUG("avStepsFront = " << avStepsFront << " // " << aAvStepsFront);
-        ALICEVISION_LOG_DEBUG("avStepsBehind = " << avStepsBehind << " // " << nAvStepsBehind);
-    }
+    ALICEVISION_LOG_DEBUG("_verticesAttr.size(): " << _verticesAttr.size() << "(" << verticesRandIds.size() << ")");
+    ALICEVISION_LOG_DEBUG("totalVertexIsVirtual: " << totalVertexIsVirtual);
+    ALICEVISION_LOG_DEBUG("totalStepsFront//totalRayFront = " << totalStepsFront << " // " << totalRayFront);
+    ALICEVISION_LOG_DEBUG("totalStepsBehind//totalRayBehind = " << totalStepsBehind << " // " << totalRayBehind);
+    ALICEVISION_LOG_DEBUG("totalCamHaveVisibilityOnVertex//totalOfVertex = " << totalCamHaveVisibilityOnVertex << " // " << totalOfVertex);
+
     mvsUtils::printfElapsedTime(t2, "t-edges forced: ");
 }
 

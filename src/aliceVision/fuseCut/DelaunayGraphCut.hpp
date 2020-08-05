@@ -119,12 +119,6 @@ public:
         {}
     };
 
-    enum class EDirection
-    {
-        toTheCam,
-        behindThePoint
-    };
-
     struct IntersectionHistory
     {
         size_t steps = 0;

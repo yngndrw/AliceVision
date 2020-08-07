@@ -1800,10 +1800,22 @@ void DelaunayGraphCut::fillGraphPartPtRc(int& outTotalStepsFront, int& outTotalS
 #ifdef ALICEVISION_DEBUG_VOTE
                 // exportBackPropagationMesh("fillGraph_ToCam_typeNone", history.geometries, originPt, mp->CArr[cam]);
 #endif
-                // throw std::runtime_error("[Error]: fillGraphPartPtRc toTheCam, cause: geometry cannot be found.");
-                ALICEVISION_LOG_TRACE("[Error]: fillGraphPartPtRc toTheCam, cause: geometry cannot be found.");
+                ALICEVISION_LOG_DEBUG("[Error]: fillGraph(toTheCam) cause: geometry cannot be found.");
                 break;
             }
+
+#ifdef ALICEVISION_DEBUG_VOTE
+            {
+                const auto end = history.geometries.end();
+                auto it = std::find(history.geometries.begin(), end, geometry);
+                if (it != end)
+                {
+                    // exportBackPropagationMesh("fillGraph_ToCam_alreadyIntersected", history.geometries, originPt, mp->CArr[cam]);
+                    ALICEVISION_LOG_DEBUG("[Error]: fillGraph(toTheCam) cause: intersected geometry has already been intersected.");
+                    break;
+                }
+            }
+#endif
 
             if (geometry.type == EGeometryType::Facet)
             {
@@ -1827,8 +1839,7 @@ void DelaunayGraphCut::fillGraphPartPtRc(int& outTotalStepsFront, int& outTotalS
 #ifdef ALICEVISION_DEBUG_VOTE
                     // exportBackPropagationMesh("fillGraph_ToCam_invalidMirorFacet", history.geometries, originPt, mp->CArr[cam]);
 #endif
-                    // throw std::runtime_error("[Error]: fillGraphPartPtRc toTheCam, cause: invalidOrInfinite miror facet.");
-                    ALICEVISION_LOG_TRACE("[Error]: fillGraphPartPtRc toTheCam, cause: invalidOrInfinite miror facet.");
+                    ALICEVISION_LOG_DEBUG("[Error]: fillGraph(toTheCam) cause: invalidOrInfinite miror facet.");
                     break;
                 }
                 lastIntersectedFacet = mFacet;
@@ -1897,8 +1908,7 @@ void DelaunayGraphCut::fillGraphPartPtRc(int& outTotalStepsFront, int& outTotalS
 #ifdef ALICEVISION_DEBUG_VOTE
                     // exportBackPropagationMesh("fillGraph_behindThePoint_NoneButPreviousIsFacet", history.geometries, originPt, mp->CArr[cam]);
 #endif
-                    // throw std::runtime_error("[DelaunayGraphCut::fillGraphPartPtRc] first loop: Geometry cannot be found.");
-                    ALICEVISION_LOG_TRACE("[Error]: fillGraphPartPtRc behindThePoint, cause: None geometry but previous is Facet.");
+                    ALICEVISION_LOG_DEBUG("[Error]: fillGraph(behindThePoint) cause: None geometry but previous is Facet.");
                 }
                 // Break if we reach the end of the tetrahedralization volume
                 break;
@@ -2090,12 +2100,24 @@ void DelaunayGraphCut::forceTedgesByGradientIJCV(bool fixesSigma, float nPixelSi
                     if (geometry.type == EGeometryType::None)
                     {
 #ifdef ALICEVISION_DEBUG_VOTE
-                        // exportBackPropagationMesh("forceTedgesByGradientIJCV_ToCam_typeNone", history.geometries, originPt, mp->CArr[cam]);
+                        // exportBackPropagationMesh("forceTedges_ToCam_typeNone", history.geometries, originPt, mp->CArr[cam]);
 #endif
-                        // throw std::runtime_error("[DelaunayGraphCut::fillGraphPartPtRc] first loop: Geometry cannot be found.");
-                        ALICEVISION_LOG_TRACE("[Error]: forceTedgesByGradientIJCV toTheCam, cause: geometry cannot be found.");
+                        ALICEVISION_LOG_DEBUG("[Error]: forceTedges(toTheCam) cause: geometry cannot be found.");
                         break;
                     }
+
+#ifdef ALICEVISION_DEBUG_VOTE
+                    {
+                        const auto end = history.geometries.end();
+                        auto it = std::find(history.geometries.begin(), end, geometry);
+                        if (it != end)
+                        {
+                            // exportBackPropagationMesh("forceTedges_ToCam_alreadyIntersected", history.geometries, originPt, mp->CArr[cam]);
+                            ALICEVISION_LOG_DEBUG("[Error]: forceTedges(toTheCam) cause: intersected geometry has already been intersected.");
+                            break;
+                        }
+                    }
+#endif
 
                     if (geometry.type == EGeometryType::Facet)
                     {
@@ -2117,10 +2139,9 @@ void DelaunayGraphCut::forceTedgesByGradientIJCV(bool fixesSigma, float nPixelSi
                         if (isInvalidOrInfiniteCell(mFacet.cellIndex))
                         {
 #ifdef ALICEVISION_DEBUG_VOTE
-                            // exportBackPropagationMesh("forceTedgesByGradientIJCV_ToCam_invalidMirorFacet", history.geometries, originPt, mp->CArr[cam]);
+                            // exportBackPropagationMesh("forceTedges_ToCam_invalidMirorFacet", history.geometries, originPt, mp->CArr[cam]);
 #endif
-                            // throw std::runtime_error("[DelaunayGraphCut::fillGraphPartPtRc] first loop: Geometry cannot be found.");
-                            ALICEVISION_LOG_TRACE("[Error]: forceTedgesByGradientIJCV toTheCam, cause: invalidOrInfinite miror facet.");
+                            ALICEVISION_LOG_DEBUG("[Error]: forceTedges(toTheCam) cause: invalidOrInfinite miror facet.");
                             break;
                         }
                         geometry.facet = mFacet;
@@ -2171,10 +2192,9 @@ void DelaunayGraphCut::forceTedgesByGradientIJCV(bool fixesSigma, float nPixelSi
                         if (previousGeometry.type == EGeometryType::Facet)
                         {
 #ifdef ALICEVISION_DEBUG_VOTE
-                            // exportBackPropagationMesh("forceTedgesByGradientIJCV_behindThePoint_typeNone", history.geometries, originPt, mp->CArr[cam]);
+                            // exportBackPropagationMesh("forceTedges_behindThePoint_NoneButPreviousIsFacet", history.geometries, originPt, mp->CArr[cam]);
 #endif
-                            // throw std::runtime_error("[Error]: forceTedgesByGradientIJCV behindThePoint, cause: geometry cannot be found.");
-                            ALICEVISION_LOG_TRACE("[Error]: forceTedgesByGradientIJCV behindThePoint, cause: geometry cannot be found.");
+                            ALICEVISION_LOG_DEBUG("[Error]: forceTedges(behindThePoint) cause: None geometry but previous is Facet.");
                         }
                         // Break if we reach the end of the tetrahedralization volume
                         break;

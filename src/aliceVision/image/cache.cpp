@@ -6,28 +6,6 @@ namespace aliceVision
 namespace image
 {
 
-CachedTile::~CachedTile() {
-  
-  std::shared_ptr<TileCacheManager> manager = _manager.lock();
-  if (manager) {
-    manager->notifyDestroy(_uid);
-    
-  }
-}
-
-bool CachedTile::acquire() {
-
-  std::shared_ptr<TileCacheManager> manager = _manager.lock();
-  if (!manager) {
-    return false;
-  }
-  
-  
-  return manager->acquire(_uid);
-
-  return true;
-}
-
 CacheManager::CacheManager(const std::string & pathStorage, size_t blockSize, size_t maxBlocksPerIndex) :
 _basePathStorage(pathStorage),
 _blockSize(blockSize),
@@ -301,6 +279,27 @@ void CacheManager::addFreeBlock(size_t blockId, size_t blockCount) {
 
 size_t CacheManager::getActiveBlocks() const {
   return _memoryMap.size();
+}
+
+CachedTile::~CachedTile() {
+  
+  std::shared_ptr<TileCacheManager> manager = _manager.lock();
+  if (manager) {
+    manager->notifyDestroy(_uid);
+  }
+}
+
+bool CachedTile::acquire() {
+
+  std::shared_ptr<TileCacheManager> manager = _manager.lock();
+  if (!manager) {
+    return false;
+  }
+  
+  
+  return manager->acquire(_uid);
+
+  return true;
 }
 
 TileCacheManager::TileCacheManager(const std::string & path_storage, size_t tileWidth, size_t tileHeight, size_t maxTilesPerIndex) :
